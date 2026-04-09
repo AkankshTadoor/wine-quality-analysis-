@@ -6,105 +6,311 @@
   <title>Wine Quality Predictor | PCA</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body>
-  <div class="bg-shape shape-one"></div>
-  <div class="bg-shape shape-two"></div>
+  <div class="canvas-glow glow-one"></div>
+  <div class="canvas-glow glow-two"></div>
 
-  <main class="page">
-    <section class="hero reveal">
-      <p class="eyebrow">Simple End-to-End Demo</p>
-      <h1>Wine Quality Analysis using PCA</h1>
-      <p class="subtitle">
-        Enter wine chemistry values, submit once, and get a simple prediction: <strong>Good Wine</strong> or <strong>Bad Wine</strong>.
-      </p>
-    </section>
+  <div class="app-shell">
+    <main class="workspace">
+      <section class="headline panel">
+        <div>
+          <h1>Vintage Quality Prediction Tool</h1>
+          <p>
+            Fine-tune chemical variables to simulate and predict your wine quality score in real time.
+            Rule used: quality score >= {{ threshold }} means Good Wine.
+          </p>
+        </div>
+      </section>
 
-    <section class="metrics reveal stagger-1">
-      <article class="metric-card">
-        <p>Model Accuracy</p>
-        <h2>{{ (metrics.accuracy * 100) | round(2) }}%</h2>
-      </article>
-      <article class="metric-card">
-        <p>PCA Components Used</p>
-        <h2>{{ metrics.pca_components }}</h2>
-      </article>
-      <article class="metric-card">
-        <p>Training / Testing Rows</p>
-        <h2>{{ metrics.train_rows }} / {{ metrics.test_rows }}</h2>
-      </article>
-    </section>
+      <section class="stats-row panel">
+        <article>
+          <span>Model Accuracy</span>
+          <strong>{{ (metrics.accuracy * 100) | round(2) }}%</strong>
+        </article>
+        <article>
+          <span>PCA Components</span>
+          <strong>{{ metrics.pca_components }}</strong>
+        </article>
+        <article>
+          <span>Train / Test Rows</span>
+          <strong>{{ metrics.train_rows }} / {{ metrics.test_rows }}</strong>
+        </article>
+      </section>
 
-    <section class="panel reveal stagger-2">
-      <form id="predict-form" class="form-grid">
-        {% for item in feature_inputs %}
-        <label class="field">
-          <span>{{ item.label }}</span>
-          <input
-            type="number"
-            step="any"
-            name="{{ item.field }}"
-            value="{{ item.default }}"
-            required
-          />
-        </label>
-        {% endfor %}
+      <section class="main-grid">
+        <section class="chemistry panel">
+          <div class="section-head">
+            <h3>Chemical Composition Lab</h3>
+            <span class="status-pill" id="predict-status">Live simulation</span>
+          </div>
 
-        <button type="submit" class="cta">Predict Quality</button>
-      </form>
+          <form id="lab-form" class="sliders-grid" autocomplete="off">
+            {% for item in feature_inputs %}
+            <label class="slider-field">
+              <div class="slider-top">
+                <span>{{ item.label }}</span>
+                <strong id="value-{{ item.field }}" data-unit="{{ item.unit }}">{{ item.default }} {{ item.unit }}</strong>
+              </div>
+              <input
+                type="range"
+                name="{{ item.field }}"
+                min="{{ item.min }}"
+                max="{{ item.max }}"
+                step="{{ item.step }}"
+                value="{{ item.default }}"
+                aria-label="{{ item.label }}"
+              />
+            </label>
+            {% endfor %}
+          </form>
+        </section>
 
-      <div id="result" class="result hidden" aria-live="polite"></div>
-      <p class="note">Rule used: quality score >= {{ threshold }} means Good Wine.</p>
-    </section>
-  </main>
+        <aside class="right-column">
+          <section class="quality panel">
+            <p class="quality-title">Predicted Quality Score</p>
+            <div class="ring-wrap">
+              <svg viewBox="0 0 140 140" class="ring-chart" aria-hidden="true">
+                <circle cx="70" cy="70" r="54" class="ring-bg"></circle>
+                <circle cx="70" cy="70" r="54" class="ring-progress" id="ring-progress"></circle>
+              </svg>
+              <div class="ring-content">
+                <strong id="score-value">0.0</strong>
+                <span id="score-tier">Analyzing</span>
+              </div>
+            </div>
+
+            <div class="quality-meta">
+              <div>
+                <span>Confidence</span>
+                <strong id="confidence-value">0%</strong>
+              </div>
+              <div>
+                <span>Prediction</span>
+                <strong id="quality-label">Waiting</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="history panel">
+            <div class="section-head small">
+              <h3>Simulation History</h3>
+            </div>
+            <div class="history-list" id="history-list"></div>
+            <button type="button" class="clear-btn" id="clear-history">Clear History</button>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
 
   <script>
-    const form = document.getElementById('predict-form');
-    const resultBox = document.getElementById('result');
+    const form = document.getElementById('lab-form');
+    const sliders = Array.from(form.querySelectorAll('input[type="range"]'));
+    const statusEl = document.getElementById('predict-status');
+    const ring = document.getElementById('ring-progress');
+    const scoreEl = document.getElementById('score-value');
+    const tierEl = document.getElementById('score-tier');
+    const confidenceEl = document.getElementById('confidence-value');
+    const qualityLabelEl = document.getElementById('quality-label');
+    const historyEl = document.getElementById('history-list');
+    const clearHistoryButton = document.getElementById('clear-history');
 
-    function showResult(html, isError = false) {
-      resultBox.classList.remove('hidden', 'error', 'good', 'bad');
-      if (isError) {
-        resultBox.classList.add('error');
+    const ringRadius = 54;
+    const ringCircumference = 2 * Math.PI * ringRadius;
+    ring.style.strokeDasharray = String(ringCircumference);
+    ring.style.strokeDashoffset = String(ringCircumference);
+
+    let displayedScore = 0;
+    let animationFrame = null;
+    let pendingTimer = null;
+    let inflightController = null;
+    const historyItems = [];
+
+    function sliderDecimals(step) {
+      const raw = String(step);
+      if (!raw.includes('.')) {
+        return 0;
       }
-      resultBox.innerHTML = html;
+      return raw.split('.')[1].length;
     }
 
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    function updateSliderUI(slider) {
+      const min = Number(slider.min);
+      const max = Number(slider.max);
+      const value = Number(slider.value);
+      const percentage = ((value - min) / (max - min)) * 100;
+      slider.style.background =
+        'linear-gradient(to right, #4f0d14 0%, #4f0d14 ' + percentage + '%, #d8cbc3 ' + percentage + '%, #d8cbc3 100%)';
 
-      const data = Object.fromEntries(new FormData(form).entries());
+      const decimalPlaces = sliderDecimals(slider.step || '0.01');
+      const valueNode = document.getElementById('value-' + slider.name);
+      const unit = valueNode.dataset.unit || '';
+      valueNode.textContent = value.toFixed(decimalPlaces) + ' ' + unit;
+    }
 
-      showResult('Checking wine quality...');
+    function tierFromScore(score) {
+      if (score >= 8.5) return 'Excellent';
+      if (score >= 7.0) return 'Very Good';
+      if (score >= 6.0) return 'Good';
+      if (score >= 5.0) return 'Fair';
+      return 'Weak';
+    }
+
+    function applyTierStyle(score) {
+      let color = '#4f0d14';
+      if (score < 5.0) color = '#8c3a2d';
+      if (score >= 6.0) color = '#8f5a1b';
+      if (score >= 7.0) color = '#4a6f2a';
+      if (score >= 8.5) color = '#1f6b39';
+      ring.style.stroke = color;
+    }
+
+    function drawRing(score) {
+      const clamped = Math.max(0, Math.min(score, 10));
+      const progress = clamped / 10;
+      const offset = ringCircumference * (1 - progress);
+      ring.style.strokeDashoffset = String(offset);
+      scoreEl.textContent = clamped.toFixed(1);
+      tierEl.textContent = tierFromScore(clamped);
+      applyTierStyle(clamped);
+    }
+
+    function animateToScore(targetScore) {
+      if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+      }
+
+      const start = displayedScore;
+      const delta = targetScore - start;
+      const duration = 460;
+      const startTime = performance.now();
+
+      function tick(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        displayedScore = start + delta * eased;
+        drawRing(displayedScore);
+
+        if (t < 1) {
+          animationFrame = requestAnimationFrame(tick);
+        }
+      }
+
+      animationFrame = requestAnimationFrame(tick);
+    }
+
+    function payloadFromSliders() {
+      const values = {};
+      sliders.forEach((slider) => {
+        values[slider.name] = slider.value;
+      });
+      return values;
+    }
+
+    function renderHistory() {
+      if (!historyItems.length) {
+        historyEl.innerHTML = '<p class="empty-history">No runs yet. Move any slider to begin.</p>';
+        return;
+      }
+
+      historyEl.innerHTML = historyItems
+        .map((item) => {
+          return (
+            '<article class="history-item">' +
+              '<div class="history-top">' +
+                '<strong>Run #' + item.id + '</strong>' +
+                '<span>' + item.score.toFixed(1) + '</span>' +
+              '</div>' +
+              '<p>' + item.label + ' | Confidence ' + item.confidence.toFixed(2) + '%</p>' +
+            '</article>'
+          );
+        })
+        .join('');
+    }
+
+    function pushHistory(score, label, confidence) {
+      historyItems.unshift({
+        id: historyItems.length + 1,
+        score,
+        label,
+        confidence,
+      });
+
+      if (historyItems.length > 5) {
+        historyItems.pop();
+      }
+
+      renderHistory();
+    }
+
+    async function runPrediction() {
+      if (inflightController) {
+        inflightController.abort();
+      }
+
+      const controller = new AbortController();
+      inflightController = controller;
+      statusEl.textContent = 'Analyzing...';
 
       try {
         const response = await fetch('/api/predict', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          body: JSON.stringify(payloadFromSliders()),
+          signal: controller.signal,
         });
 
         const payload = await response.json();
-
         if (!response.ok || !payload.ok) {
-          const errorText = (payload.errors || ['Prediction failed.']).join('<br>');
-          showResult(errorText, true);
-          return;
+          throw new Error((payload.errors || ['Prediction failed'])[0]);
         }
 
-        const qualityClass = payload.label === 'Good Wine' ? 'good' : 'bad';
-        resultBox.classList.add(qualityClass);
-        showResult(
-          '<h3>' + payload.label + '</h3>' +
-          '<p>Confidence for Good Wine: <strong>' + payload.good_probability + '%</strong></p>' +
-          '<small>' + payload.rule + '</small>'
-        );
+        const confidence = Number(payload.good_probability);
+        const score = confidence / 10;
+        animateToScore(score);
+        confidenceEl.textContent = confidence.toFixed(2) + '%';
+        qualityLabelEl.textContent = payload.label;
+        statusEl.textContent = 'Live simulation';
+        pushHistory(score, payload.label, confidence);
       } catch (error) {
-        showResult('Could not connect to backend. Please start app.py first.', true);
+        if (error.name === 'AbortError') {
+          return;
+        }
+        statusEl.textContent = 'Connection issue';
+        qualityLabelEl.textContent = 'Unavailable';
+      } finally {
+        if (inflightController === controller) {
+          inflightController = null;
+        }
       }
+    }
+
+    function schedulePrediction() {
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+      }
+      pendingTimer = setTimeout(runPrediction, 180);
+    }
+
+    sliders.forEach((slider) => {
+      updateSliderUI(slider);
+      slider.addEventListener('input', () => {
+        updateSliderUI(slider);
+        schedulePrediction();
+      });
     });
+
+    clearHistoryButton.addEventListener('click', () => {
+      historyItems.length = 0;
+      renderHistory();
+    });
+
+    renderHistory();
+    runPrediction();
   </script>
 </body>
 </html>

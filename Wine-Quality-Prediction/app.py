@@ -24,6 +24,21 @@ FEATURES: List[Tuple[str, str]] = [
     ("sulphates", "sulphates"),
     ("alcohol", "alcohol"),
 ]
+
+FEATURE_UI: Dict[str, Dict[str, object]] = {
+    "fixed_acidity": {"min": 4.0, "max": 16.0, "step": 0.01, "unit": "g/dm3"},
+    "volatile_acidity": {"min": 0.1, "max": 1.6, "step": 0.001, "unit": "g/dm3"},
+    "citric_acid": {"min": 0.0, "max": 1.0, "step": 0.001, "unit": "g/dm3"},
+    "residual_sugar": {"min": 0.8, "max": 16.0, "step": 0.01, "unit": "g/dm3"},
+    "chlorides": {"min": 0.01, "max": 0.7, "step": 0.001, "unit": "g/dm3"},
+    "free_sulfur_dioxide": {"min": 1.0, "max": 75.0, "step": 0.1, "unit": "mg/dm3"},
+    "total_sulfur_dioxide": {"min": 6.0, "max": 290.0, "step": 0.1, "unit": "mg/dm3"},
+    "density": {"min": 0.987, "max": 1.005, "step": 0.0001, "unit": "g/cm3"},
+    "pH": {"min": 2.7, "max": 4.2, "step": 0.01, "unit": "pH"},
+    "sulphates": {"min": 0.3, "max": 2.0, "step": 0.01, "unit": "g/dm3"},
+    "alcohol": {"min": 8.0, "max": 15.0, "step": 0.01, "unit": "%"},
+}
+
 GOOD_QUALITY_THRESHOLD = 6
 
 
@@ -81,6 +96,10 @@ def home() -> str:
             "field": field,
             "label": column.title(),
             "default": FEATURE_DEFAULTS[field],
+            "min": FEATURE_UI[field]["min"],
+            "max": FEATURE_UI[field]["max"],
+            "step": FEATURE_UI[field]["step"],
+            "unit": FEATURE_UI[field]["unit"],
         }
         for field, column in FEATURES
     ]
